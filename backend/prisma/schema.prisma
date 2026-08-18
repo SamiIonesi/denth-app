@@ -1,0 +1,566 @@
+// ============================================================================
+// DenTh — Prisma Schema
+// ============================================================================
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMs
+// ============================================================================
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ASSISTANT
+  ADMIN
+}
+
+enum PreferredLanguage {
+  ro
+  en
+}
+
+enum AccountInvitationRole {
+  DOCTOR
+  ASSISTANT
+  ADMIN
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum StockItemCategory {
+  INSTRUMENT
+  MATERIAL
+  MEDICATION
+  EQUIPMENT
+}
+
+enum OrderStatus {
+  SENT
+  CONFIRMED
+  DELIVERED
+}
+
+enum NotificationType {
+  APPOINTMENT_REMINDER
+  STOCK_ALERT
+  ACCOUNT
+  GENERAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  BOTH
+}
+
+enum MedicalDocumentType {
+  X_RAY
+  PRESCRIPTION
+  CONSENT_FORM
+  LAB_RESULT
+  OTHER
+}
+
+enum AuditLogAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model Country {
+  id   Int    @id @default(autoincrement()) @map("_pk_CountryId")
+  name String @map("CountryName") @db.VarChar(100)
+  code String @map("CountryCode") @db.Char(3)
+
+  counties County[]
+
+  @@map("Country")
+}
+
+model County {
+  id        Int    @id @default(autoincrement()) @map("_pk_CountyId")
+  countryId Int    @map("_fk_CountryId")
+  name      String @map("CountyName") @db.VarChar(100)
+  code      String @map("CountyCode") @db.VarChar(10)
+
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities  City[]
+
+  @@map("County")
+}
+
+model City {
+  id       Int    @id @default(autoincrement()) @map("_pk_CityId")
+  countyId Int    @map("_fk_CountyId")
+  name     String @map("CityName") @db.VarChar(100)
+
+  county   County    @relation(fields: [countyId], references: [id], onDelete: Cascade)
+  clinics  Clinic[]
+  patients Patient[]
+
+  @@map("City")
+}
+
+model Clinic {
+  id         Int     @id @default(autoincrement()) @map("_pk_ClinicId")
+  cityId     Int     @map("_fk_CityId")
+  shortName  String  @unique @map("ClinicShortName") @db.VarChar(10)
+  name       String  @map("ClinicName") @db.VarChar(150)
+  street     String  @map("ClinicStreet") @db.VarChar(150)
+  streetNo   String  @map("ClinicStreetNo") @db.VarChar(10)
+  postalCode String  @map("ClinicPostalCode") @db.VarChar(10)
+  phoneNo    String  @map("ClinicPhoneNo") @db.VarChar(20)
+  email      String  @map("ClinicEmail") @db.VarChar(150)
+
+  city                  City                   @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  doctors               Doctor[]
+  assistants            Assistant[]
+  stockItems            StockItem[]
+  preferredByPatients   Patient[]
+  clinicMedicalServices ClinicMedicalService[]
+  clinicSchedules       ClinicSchedule[]
+  accountInvitations    AccountInvitation[]
+
+  @@map("Clinic")
+}
+
+model Specialization {
+  id          Int    @id @default(autoincrement()) @map("_pk_SpecializationId")
+  name        String @map("SpecializationName") @db.VarChar(100)
+  description String @map("SpecializationDescription") @db.Text
+
+  doctors         Doctor[]
+  medicalServices MedicalService[]
+
+  @@map("Specialization")
+}
+
+model User {
+  id                          Int               @id @default(autoincrement()) @map("_pk_UserId")
+  email                       String            @unique @map("UserEmail") @db.VarChar(150)
+  passwordHash                String            @map("UserPasswordHash") @db.VarChar(255)
+  role                        UserRole          @map("UserRole")
+  emailVerified               Boolean           @default(false) @map("UserEmailVerified")
+  emailVerificationToken      String?           @map("UserEmailVerificationToken") @db.VarChar(255)
+  emailVerificationExpiresAt  DateTime?         @map("UserEmailVerificationExpiresAt")
+  passwordResetToken          String?           @map("UserPasswordResetToken") @db.VarChar(255)
+  passwordResetExpiresAt      DateTime?         @map("UserPasswordResetExpiresAt")
+  gdprConsent                 Boolean           @default(false) @map("UserGDPRConsent")
+  gdprConsentDate              DateTime?         @map("UserGDPRConsentDate")
+  preferredLanguage           PreferredLanguage @default(ro) @map("UserPreferredLanguage")
+  createdAt                   DateTime          @default(now()) @map("UserCreatedAt")
+  active                      Boolean           @default(true) @map("UserActive")
+
+  patient              Patient?
+  doctor               Doctor?
+  assistant            Assistant?
+  sentInvitations      AccountInvitation[]
+  notifications        Notification[]
+  sentChatMessages     ChatMessage[]       @relation("ChatMessageSender")
+  receivedChatMessages ChatMessage[]       @relation("ChatMessageReceiver")
+  uploadedDocuments    MedicalDocument[]
+  auditLogs            AuditLog[]
+
+  @@map("User")
+}
+
+model AccountInvitation {
+  id            Int                    @id @default(autoincrement()) @map("_pk_AccountInvitationId")
+  clinicId      Int?                   @map("_fk_ClinicId")
+  invitedById   Int                    @map("_fk_InvitedByUserId")
+  email         String                 @map("AccountInvitationEmail") @db.VarChar(150)
+  role          AccountInvitationRole  @map("AccountInvitationRole")
+  token         String                 @unique @map("AccountInvitationToken") @db.VarChar(255)
+  expiresAt     DateTime               @map("AccountInvitationExpiresAt")
+  usedAt        DateTime?              @map("AccountInvitationUsedAt")
+
+  clinic    Clinic? @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  invitedBy User    @relation(fields: [invitedById], references: [id], onDelete: Restrict)
+
+  @@map("AccountInvitation")
+}
+
+model Patient {
+  id                  Int       @id @default(autoincrement()) @map("_pk_PatientId")
+  userId              Int       @unique @map("_fk_UserId")
+  preferredClinicId   Int?      @map("_fk_PreferredClinicId")
+  cityId              Int?      @map("_fk_CityId")
+  lastName            String    @map("PatientLastName") @db.VarChar(100)
+  firstName           String    @map("PatientFirstName") @db.VarChar(100)
+  nationalId          String?   @map("PatientNationalId") @db.Char(13)
+  birthDate           DateTime? @map("PatientBirthDate") @db.Date
+  phoneNo             String    @map("PatientPhoneNo") @db.VarChar(20)
+  street              String?   @map("PatientStreet") @db.VarChar(150)
+  streetNo            String?   @map("PatientStreetNo") @db.VarChar(10)
+  postalCode          String?   @map("PatientPostalCode") @db.VarChar(10)
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredClinic Clinic?        @relation(fields: [preferredClinicId], references: [id], onDelete: SetNull)
+  city            City?          @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  medicalRecord   MedicalRecord?
+  appointments    Appointment[]
+  payments        Payment[]
+  reviews         Review[]
+
+  @@map("Patient")
+}
+
+model Doctor {
+  id               Int     @id @default(autoincrement()) @map("_pk_DoctorId")
+  userId           Int     @unique @map("_fk_UserId")
+  clinicId         Int     @map("_fk_ClinicId")
+  specializationId Int     @map("_fk_SpecializationId")
+  lastName         String  @map("DoctorLastName") @db.VarChar(100)
+  firstName        String  @map("DoctorFirstName") @db.VarChar(100)
+  phoneNo          String  @map("DoctorPhoneNo") @db.VarChar(20)
+  birthDate        DateTime? @map("DoctorBirthDate") @db.Date
+  active           Boolean @default(true) @map("DoctorActive")
+  bio              String? @map("DoctorBio") @db.Text
+
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic          Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  specialization  Specialization         @relation(fields: [specializationId], references: [id], onDelete: Restrict)
+  availabilities  DoctorAvailability[]
+  timeOffs        DoctorTimeOff[]
+  appointments    Appointment[]
+  treatments      Treatment[]
+  orders          Order[]
+  reviews         Review[]
+
+  @@map("Doctor")
+}
+
+model Assistant {
+  id        Int     @id @default(autoincrement()) @map("_pk_AssistantId")
+  userId    Int     @unique @map("_fk_UserId")
+  clinicId  Int     @map("_fk_ClinicId")
+  lastName  String  @map("AssistantLastName") @db.VarChar(100)
+  firstName String  @map("AssistantFirstName") @db.VarChar(100)
+  phoneNo   String  @map("AssistantPhoneNo") @db.VarChar(20)
+  active    Boolean @default(true) @map("AssistantActive")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+
+  @@map("Assistant")
+}
+
+model MedicalService {
+  id                     Int     @id @default(autoincrement()) @map("_pk_MedicalServiceId")
+  specializationId       Int?    @map("_fk_SpecializationId")
+  name                   String  @map("MedicalServiceName") @db.VarChar(150)
+  description            String  @map("MedicalServiceDescription") @db.Text
+  estimatedDurationMin   Int     @map("MedicalServiceEstimatedDurationMin")
+
+  specialization        Specialization?        @relation(fields: [specializationId], references: [id], onDelete: SetNull)
+  clinicMedicalServices  ClinicMedicalService[]
+
+  @@map("MedicalService")
+}
+
+model ClinicMedicalService {
+  id               Int     @id @default(autoincrement()) @map("_pk_ClinicMedicalServiceId")
+  clinicId         Int     @map("_fk_ClinicId")
+  medicalServiceId Int     @map("_fk_MedicalServiceId")
+  price            Decimal @map("ClinicMedicalServicePrice") @db.Decimal(10, 2)
+
+  clinic         Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  medicalService MedicalService @relation(fields: [medicalServiceId], references: [id], onDelete: Restrict)
+  appointments   Appointment[]
+  treatmentItems TreatmentItem[]
+
+  @@unique([clinicId, medicalServiceId])
+  @@map("ClinicMedicalService")
+}
+
+model ClinicSchedule {
+  id        Int     @id @default(autoincrement()) @map("_pk_ClinicScheduleId")
+  clinicId  Int     @map("_fk_ClinicId")
+  weekday   Weekday @map("ClinicScheduleWeekday")
+  openTime  DateTime @map("ClinicScheduleOpenTime") @db.Time
+  closeTime DateTime @map("ClinicScheduleCloseTime") @db.Time
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@map("ClinicSchedule")
+}
+
+model DoctorAvailability {
+  id        Int      @id @default(autoincrement()) @map("_pk_DoctorAvailabilityId")
+  doctorId  Int      @map("_fk_DoctorId")
+  weekday   Weekday  @map("DoctorAvailabilityWeekday")
+  startTime DateTime @map("DoctorAvailabilityStartTime") @db.Time
+  endTime   DateTime @map("DoctorAvailabilityEndTime") @db.Time
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@map("DoctorAvailability")
+}
+
+model DoctorTimeOff {
+  id        Int       @id @default(autoincrement()) @map("_pk_DoctorTimeOffId")
+  doctorId  Int       @map("_fk_DoctorId")
+  startDate DateTime  @map("DoctorTimeOffStartDate") @db.Date
+  endDate   DateTime  @map("DoctorTimeOffEndDate") @db.Date
+  reason    String?   @map("DoctorTimeOffReason") @db.VarChar(150)
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@map("DoctorTimeOff")
+}
+
+model Appointment {
+  id                     Int               @id @default(autoincrement()) @map("_pk_AppointmentId")
+  patientId              Int               @map("_fk_PatientId")
+  doctorId               Int               @map("_fk_DoctorId")
+  clinicMedicalServiceId Int               @map("_fk_ClinicMedicalServiceId")
+  dateTime               DateTime          @map("AppointmentDateTime")
+  status                 AppointmentStatus @default(REQUESTED) @map("AppointmentStatus")
+  createdAt              DateTime          @default(now()) @map("AppointmentCreatedAt")
+
+  patient              Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor               Doctor               @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  clinicMedicalService ClinicMedicalService @relation(fields: [clinicMedicalServiceId], references: [id], onDelete: Restrict)
+  treatment            Treatment?
+  review               Review?
+
+  // NOTA: constrangerea UNIQUE(doctorId, dateTime) WHERE status != 'CANCELLED'
+  // este un index UNIQUE PARTIAL - Prisma nu-l poate exprima in schema.
+  // Se adauga manual in migratie (vezi instructiuni dupa "prisma migrate dev").
+  @@map("Appointment")
+}
+
+model MedicalRecord {
+  id              Int      @id @default(autoincrement()) @map("_pk_MedicalRecordId")
+  patientId       Int      @unique @map("_fk_PatientId")
+  medicalHistory  String   @map("MedicalRecordMedicalHistory") @db.Text
+  allergies       String   @map("MedicalRecordAllergies") @db.Text
+  updatedAt       DateTime @updatedAt @map("MedicalRecordUpdatedAt")
+
+  patient    Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatments Treatment[]
+
+  @@map("MedicalRecord")
+}
+
+model Treatment {
+  id              Int       @id @default(autoincrement()) @map("_pk_TreatmentId")
+  medicalRecordId Int       @map("_fk_MedicalRecordId")
+  appointmentId   Int?      @unique @map("_fk_AppointmentId")
+  doctorId        Int       @map("_fk_DoctorId")
+  description     String    @map("TreatmentDescription") @db.Text
+  date            DateTime  @map("TreatmentDate") @db.Date
+
+  medicalRecord     MedicalRecord      @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+  appointment       Appointment?       @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  doctor            Doctor             @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  items             TreatmentItem[]
+  medicalDocuments  MedicalDocument[]
+  paymentAllocations PaymentAllocation[]
+
+  @@map("Treatment")
+}
+
+model TreatmentItem {
+  treatmentId            Int     @map("_pk_TreatmentId")
+  clinicMedicalServiceId Int     @map("_pk_ClinicMedicalServiceId")
+  quantity               Int     @map("TreatmentItemQuantity")
+  unitPrice              Decimal @map("TreatmentItemUnitPrice") @db.Decimal(10, 2)
+
+  treatment            Treatment            @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  clinicMedicalService ClinicMedicalService @relation(fields: [clinicMedicalServiceId], references: [id], onDelete: Restrict)
+
+  @@id([treatmentId, clinicMedicalServiceId])
+  @@map("TreatmentItem")
+}
+
+model MedicalDocument {
+  id               Int                 @id @default(autoincrement()) @map("_pk_MedicalDocumentId")
+  treatmentId      Int                 @map("_fk_TreatmentId")
+  uploadedById     Int                 @map("_fk_UploadedByUserId")
+  type             MedicalDocumentType @map("MedicalDocumentType")
+  filePath         String              @map("MedicalDocumentFilePath") @db.VarChar(255)
+  uploadedAt       DateTime            @default(now()) @map("MedicalDocumentUploadedAt")
+
+  treatment  Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  uploadedBy User      @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@map("MedicalDocument")
+}
+
+model Payment {
+  id       Int           @id @default(autoincrement()) @map("_pk_PaymentId")
+  patientId Int          @map("_fk_PatientId")
+  amount   Decimal        @map("PaymentAmount") @db.Decimal(10, 2)
+  method   PaymentMethod  @map("PaymentMethod")
+  status   PaymentStatus  @default(PENDING) @map("PaymentStatus")
+  date     DateTime       @default(now()) @map("PaymentDate")
+
+  patient     Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  allocations PaymentAllocation[]
+
+  @@map("Payment")
+}
+
+model PaymentAllocation {
+  paymentId   Int     @map("_pk_PaymentId")
+  treatmentId Int     @map("_pk_TreatmentId")
+  amount      Decimal @map("PaymentAllocationAmount") @db.Decimal(10, 2)
+
+  payment   Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Restrict)
+
+  @@id([paymentId, treatmentId])
+  @@map("PaymentAllocation")
+}
+
+model Supplier {
+  id             Int     @id @default(autoincrement()) @map("_pk_SupplierId")
+  name           String  @map("SupplierName") @db.VarChar(150)
+  phoneNo        String  @map("SupplierPhoneNo") @db.VarChar(20)
+  email          String  @map("SupplierEmail") @db.VarChar(150)
+  contactPerson  String? @map("SupplierContactPerson") @db.VarChar(150)
+
+  orders Order[]
+
+  @@map("Supplier")
+}
+
+model StockItem {
+  id               Int               @id @default(autoincrement()) @map("_pk_StockItemId")
+  clinicId         Int               @map("_fk_ClinicId")
+  name             String            @map("StockItemName") @db.VarChar(150)
+  category         StockItemCategory @map("StockItemCategory")
+  quantity         Int               @default(0) @map("StockItemQuantity")
+  minimumQuantity  Int               @map("StockItemMinimumQuantity")
+  unit             String            @map("StockItemUnit") @db.VarChar(20)
+
+  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("StockItem")
+}
+
+model Order {
+  id         Int         @id @default(autoincrement()) @map("_pk_OrderId")
+  supplierId Int         @map("_fk_SupplierId")
+  doctorId   Int         @map("_fk_DoctorId")
+  status     OrderStatus @default(SENT) @map("OrderStatus")
+  date       DateTime    @default(now()) @map("OrderDate")
+
+  supplier Supplier    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  doctor   Doctor      @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  items    OrderItem[]
+
+  @@map("Order")
+}
+
+model OrderItem {
+  id          Int     @id @default(autoincrement()) @map("_pk_OrderItemId")
+  orderId     Int     @map("_fk_OrderId")
+  stockItemId Int     @map("_fk_StockItemId")
+  quantity    Int     @map("OrderItemQuantity")
+  unitPrice   Decimal @map("OrderItemUnitPrice") @db.Decimal(10, 2)
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  @@map("OrderItem")
+}
+
+model Notification {
+  id        Int                 @id @default(autoincrement()) @map("_pk_NotificationId")
+  userId    Int                 @map("_fk_UserId")
+  type      NotificationType    @map("NotificationType")
+  channel   NotificationChannel @default(IN_APP) @map("NotificationChannel")
+  message   String              @map("NotificationMessage") @db.Text
+  read      Boolean             @default(false) @map("NotificationRead")
+  createdAt DateTime            @default(now()) @map("NotificationCreatedAt")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("Notification")
+}
+
+model ChatMessage {
+  id         Int      @id @default(autoincrement()) @map("_pk_ChatMessageId")
+  senderId   Int      @map("_fk_SenderUserId")
+  receiverId Int      @map("_fk_ReceiverUserId")
+  content    String   @map("ChatMessageContent") @db.Text
+  sentAt     DateTime @default(now()) @map("ChatMessageSentAt")
+  read       Boolean  @default(false) @map("ChatMessageRead")
+
+  sender   User @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ChatMessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("ChatMessage")
+}
+
+model Review {
+  id            Int      @id @default(autoincrement()) @map("_pk_ReviewId")
+  patientId     Int      @map("_fk_PatientId")
+  doctorId      Int      @map("_fk_DoctorId")
+  appointmentId Int      @unique @map("_fk_AppointmentId")
+  score         Int      @map("ReviewScore") @db.SmallInt
+  comment       String?  @map("ReviewComment") @db.Text
+  approved      Boolean  @default(true) @map("ReviewApproved")
+
+  patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor      Doctor      @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  // NOTA: constrangerea CHECK (score BETWEEN 1 AND 5) se adauga manual in migratie
+  @@map("Review")
+}
+
+model AuditLog {
+  id               Int             @id @default(autoincrement()) @map("_pk_AuditLogId")
+  userId           Int?            @map("_fk_UserId")
+  action           AuditLogAction  @map("AuditLogAction")
+  affectedEntity   String          @map("AuditLogAffectedEntity") @db.VarChar(100)
+  affectedEntityId Int             @map("AuditLogAffectedEntityId")
+  oldValue         Json?           @map("AuditLogOldValue") @db.JsonB
+  newValue         Json?           @map("AuditLogNewValue") @db.JsonB
+  timestamp        DateTime        @default(now()) @map("AuditLogTimestamp")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("AuditLog")
+}
