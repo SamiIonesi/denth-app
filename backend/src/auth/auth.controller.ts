@@ -13,6 +13,8 @@ import { AuthService } from './auth.service';
 import { RegisterPatientDto } from './dto/register-patient.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { Query } from '@nestjs/common';
 
 interface AuthenticatedRequest extends Request {
   user: { userId: number; role: string };
@@ -42,5 +44,17 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   getProfile(@Req() request: AuthenticatedRequest) {
     return request.user;
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshAccessToken(dto);
+  }
+
+  @Get('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
   }
 }

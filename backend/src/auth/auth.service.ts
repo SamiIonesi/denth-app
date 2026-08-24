@@ -9,6 +9,8 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterPatientDto } from './dto/register-patient.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * Handles authentication-related business logic: registration,
@@ -104,5 +106,62 @@ export class AuthService {
     });
 
     return { accessToken, refreshToken };
+  }
+
+  /**
+   * Verifies a refresh token and, if still valid, issues a fresh
+   * access token without requiring the user to log in again.
+   */
+  async refreshAccessToken(dto: RefreshTokenDto) {
+    let payload: { sub: number; role: string };
+
+    try {
+      payload = await this.jwtService.verifyAsync(dto.refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET,
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    const accessToken = await this.jwtService.signAsync(
+      { sub: payload.sub, role: payload.role },
+      {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: Number(process.env.JWT_ACCESS_EXPIRES_IN),
+      },
+    );
+
+    return { accessToken };
+  }
+
+  /**
+   * Confirms a user's email address using the token generated at registration.
+   */
+  async verifyEmail(token: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { emailVerificationToken: token },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid verification token.');
+    }
+
+    if (
+      user.emailVerificationExpiresAt &&
+      user.emailVerificationExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Verification token has expired.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    return { message: 'Email verified successfully.' };
   }
 }
